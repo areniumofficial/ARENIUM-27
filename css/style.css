@@ -7855,98 +7855,48 @@ h1, h2, h3, h4, h5, h6,
 
 
 /* ========================================================================
-   AUTHORITATIVE WHITE TEXT ENFORCEMENT ON DARK / GREY BOXES
-   Forces pure white and neon blue contrast on payment fee cards,
-   instruction banners, and pass arena cards.
-   ======================================================================== */
-
-/* Guarantee Crisp Pure White Text Across Dark Fee Boxes */
-body:not(.register-page) #reg-fee-display,
-body:not(.register-page) #reg-fee-display div,
-body:not(.register-page) #reg-fee-display span,
-body:not(.register-page) #reg-fee-display p,
-body:not(.register-page) #reg-fee-breakdown,
-body:not(.register-page) .payment-fee-summary,
-body:not(.register-page) .payment-fee-summary div,
-body:not(.register-page) .payment-fee-summary span,
-body:not(.register-page) .payment-fee-summary p {
-  color: #FFFFFF !important;
-  -webkit-text-fill-color: #FFFFFF !important;
-}
-
-body:not(.register-page) #reg-fee-display #reg-fee-amount,
-body:not(.register-page) .payment-fee-summary #reg-fee-amount {
-  color: #38BDF8 !important;
-  -webkit-text-fill-color: #38BDF8 !important;
-}
-
-body:not(.register-page) #reg-fee-display .payment-badge,
-body:not(.register-page) .payment-fee-summary .payment-badge {
-  color: #38BDF8 !important;
-  -webkit-text-fill-color: #38BDF8 !important;
-  border-color: #38BDF8 !important;
-}
-
-/* After Payment Instructions Grey Box on Dark Pages */
-body:not(.register-page) .payment-gateway-card div[style*="border-left"],
-body:not(.register-page) .payment-gateway-card div[style*="border-left"] *,
-body:not(.register-page) .payment-instructions-box,
-body:not(.register-page) .payment-instructions-box p,
-body:not(.register-page) .payment-instructions-box span {
-  color: #FFFFFF !important;
-  -webkit-text-fill-color: #FFFFFF !important;
-}
-
-body:not(.register-page) .payment-gateway-card div[style*="border-left"] strong,
-body:not(.register-page) .payment-instructions-box strong {
-  color: #38BDF8 !important;
-  -webkit-text-fill-color: #38BDF8 !important;
-}
-
-/* ========================================================================
    REGISTER.HTML WHITE CARD - PAYMENT SUMMARY & INSTRUCTIONS HIGH CONTRAST
    Strictly ensures all payment text, breakdown, and instructions on
    register.html are dark, high-contrast, and 100% visible.
    ======================================================================== */
-.register-page #reg-fee-display,
-.register-glass-card #reg-fee-display,
-.register-page .payment-fee-summary,
-.register-glass-card .payment-fee-summary {
+#reg-fee-display,
+.payment-fee-summary {
   background: #F0F9FF !important;
   border: 1.5px solid #BAE6FD !important;
   border-radius: 14px !important;
   color: #0F172A !important;
+  -webkit-text-fill-color: #0F172A !important;
 }
 
-.register-page #reg-fee-display div,
-.register-glass-card #reg-fee-display div {
+#reg-fee-display div,
+.payment-fee-summary div {
   color: #0F172A !important;
   -webkit-text-fill-color: #0F172A !important;
 }
 
-.register-page #reg-fee-display div[style*="font-size: 0.75rem"],
-.register-glass-card #reg-fee-display div[style*="font-size: 0.75rem"] {
+#reg-fee-display .payment-fee-heading,
+.payment-fee-summary .payment-fee-heading,
+#reg-fee-display div[style*="font-size: 0.75rem"],
+.register-page #reg-fee-display div[style*="font-size: 0.75rem"] {
   color: #0369A1 !important;
   -webkit-text-fill-color: #0369A1 !important;
   font-weight: 800 !important;
 }
 
-.register-page #reg-fee-amount,
-.register-glass-card #reg-fee-amount {
+#reg-fee-amount {
   color: #0284C7 !important;
   -webkit-text-fill-color: #0284C7 !important;
   font-weight: 900 !important;
 }
 
-.register-page #reg-fee-breakdown,
-.register-glass-card #reg-fee-breakdown {
-  color: #334155 !important;
-  -webkit-text-fill-color: #334155 !important;
+#reg-fee-breakdown {
+  color: #1E293B !important;
+  -webkit-text-fill-color: #1E293B !important;
   font-weight: 600 !important;
 }
 
-.register-page .payment-fee-summary .payment-badge,
-.register-glass-card .payment-fee-summary .payment-badge {
+.payment-fee-summary .payment-badge,
+#reg-fee-display .payment-badge {
   background: #E0F2FE !important;
   border: 1.5px solid #7DD3FC !important;
   color: #0284C7 !important;
@@ -7955,28 +7905,32 @@ body:not(.register-page) .payment-instructions-box strong {
 }
 
 /* Payment Instructions Box on Register Page */
-.register-page .payment-instructions-box,
-.register-glass-card .payment-instructions-box {
+.payment-instructions-box {
   background: #F8FAFC !important;
-  border: 1.5px solid #E2E8F0 !important;
+  border: 1.5px solid #CBD5E1 !important;
   border-left: 4px solid #0284C7 !important;
+  color: #1E293B !important;
+  -webkit-text-fill-color: #1E293B !important;
 }
 
-.register-page .payment-instructions-box p,
-.register-page .payment-instructions-box span,
-.register-glass-card .payment-instructions-box p,
-.register-glass-card .payment-instructions-box span {
-  color: #334155 !important;
-  -webkit-text-fill-color: #334155 !important;
+.payment-instructions-box p,
+.payment-instructions-box span {
+  color: #1E293B !important;
+  -webkit-text-fill-color: #1E293B !important;
   font-weight: 600 !important;
   line-height: 1.6 !important;
 }
 
-.register-page .payment-instructions-box strong,
-.register-glass-card .payment-instructions-box strong {
+.payment-instructions-box strong {
   color: #0284C7 !important;
   -webkit-text-fill-color: #0284C7 !important;
   font-weight: 800 !important;
+}
+
+#pay-now-status-hint {
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569 !important;
+  font-weight: 600 !important;
 }
 
 /* Delegate Pass Registered Arenas Dark Bar */
@@ -7998,34 +7952,105 @@ body:not(.register-page) .payment-instructions-box strong {
 
 
 /* ========================================================================
-   AUTHORITATIVE WHITE TEXT ENFORCEMENT ON TEAM SQUAD MEMBERS CARD
-   Forces high-contrast pure white text for labels, titles, descriptions,
-   and badges on the dark grey container while preserving dark text on white inputs.
+   TEAM SQUAD MEMBERS CARD - CRISP HIGH-CONTRAST TYPOGRAPHY
+   Outer card is light (#F8FAFC), so all outer titles, descriptions,
+   badges, notifications, buttons, and pricing tips MUST be dark & visible!
+   Inner member boxes (.team-member-entry-box) are dark slate,
+   so their titles & labels remain pure white and sky blue.
    ======================================================================== */
 
 #group-team-members,
-#group-team-members .team-squad-outer-card,
-#group-team-members p,
-#group-team-members label,
-#group-team-members .form-label,
-#group-team-members span,
-#group-team-members div,
-.team-member-entry-box,
-.team-member-entry-box label,
-.team-member-entry-box .form-label,
-.team-member-entry-box span,
-.team-member-entry-box div {
+#group-team-members .team-squad-outer-card {
+  color: #0F172A !important;
+  -webkit-text-fill-color: #0F172A !important;
+}
+
+#group-team-members strong {
+  color: #0369A1 !important;
+  -webkit-text-fill-color: #0369A1 !important;
+  font-weight: 800 !important;
+}
+
+#group-team-members .team-squad-subtitle,
+#group-team-members span.team-squad-subtitle {
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155 !important;
+  font-weight: 600 !important;
+}
+
+#group-team-members .team-lead-badge,
+#group-team-members span.team-lead-badge {
+  background: #DCFCE7 !important;
+  border: 1px solid #86EFAC !important;
+  color: #166534 !important;
+  -webkit-text-fill-color: #166534 !important;
+  font-weight: 800 !important;
+}
+
+#group-team-members .team-lead-notice,
+#group-team-members div.team-lead-notice {
+  background: #E0F2FE !important;
+  border-left: 3.5px solid #0284C7 !important;
+  color: #0369A1 !important;
+  -webkit-text-fill-color: #0369A1 !important;
+  font-weight: 600 !important;
+}
+
+#group-team-members .team-lead-notice strong {
+  color: #0369A1 !important;
+  -webkit-text-fill-color: #0369A1 !important;
+  font-weight: 800 !important;
+}
+
+#group-team-members #team-lead-name-preview,
+#group-team-members #team-lead-usn-preview {
+  color: #0284C7 !important;
+  -webkit-text-fill-color: #0284C7 !important;
+  font-weight: 800 !important;
+}
+
+#group-team-members #btn-add-team-member {
+  background: #F0F9FF !important;
+  border: 1.5px solid #0284C7 !important;
+  color: #0284C7 !important;
+  -webkit-text-fill-color: #0284C7 !important;
+  font-weight: 800 !important;
+}
+
+#group-team-members #btn-add-team-member * {
+  color: #0284C7 !important;
+  -webkit-text-fill-color: #0284C7 !important;
+}
+
+#group-team-members .team-pricing-tip,
+#group-team-members span.team-pricing-tip {
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155 !important;
+  font-weight: 600 !important;
+}
+
+/* Inner Dark Slate Member Entry Boxes (Member 2, Member 3, etc.) */
+.team-member-entry-box {
+  background: rgba(30, 41, 59, 0.88) !important;
+  border: 1px solid rgba(56, 189, 248, 0.35) !important;
+  border-radius: 10px !important;
+  padding: 0.95rem 1.1rem !important;
   color: #FFFFFF !important;
   -webkit-text-fill-color: #FFFFFF !important;
 }
 
-#group-team-members strong,
+.team-member-entry-box label,
+.team-member-entry-box .form-label {
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+  font-weight: 700 !important;
+}
+
 .team-member-entry-box strong,
-#team-lead-name-preview,
-#team-lead-usn-preview,
 .team-member-entry-box .member-title {
   color: #38BDF8 !important;
   -webkit-text-fill-color: #38BDF8 !important;
+  font-weight: 800 !important;
 }
 
 .team-member-entry-box .req,
