@@ -124,6 +124,15 @@
             <span class="fest-tagline">Arena of innovation</span>
           </div>
         </a>
+        <a id="nav-core-link" href="https://arenium-27-core.vercel.app" target="_blank" rel="noopener noreferrer" class="btn btn-ghost" style="padding: 0.5rem 0.9rem; font-size: 0.75rem; color: #0284C7 !important; border-color: #38BDF8; font-weight: 800;" title="Open ARENIUM 27 CORE Operations Platform">
+          ⚡ CORE (OPS) ↗
+        </a>
+        <script>
+          if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            const lk = document.getElementById('nav-core-link');
+            if (lk) lk.href = 'http://localhost:5173';
+          }
+        </script>
         <a href="admin.html" class="btn btn-ghost" style="padding: 0.5rem 0.9rem; font-size: 0.75rem;" title="Fest Superadmin Dashboard">
           🔒 ADMIN
         </a>
@@ -278,6 +287,26 @@
             <a id="external-portal-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="padding: 0.8rem 2rem;">
               OPEN OFFICIAL REGISTRATION FORM ↗
             </a>
+          </div>
+
+          <!-- Delegate Pass Lookup & Verification Status Tool -->
+          <div class="pass-lookup-box" style="margin-bottom: 2rem; background: #F8FAFC; border: 1.5px solid #CBD5E1; border-radius: 18px; padding: 1.25rem 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.04);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 0.8rem;">
+              <div>
+                <span style="font-family: var(--font-mono); font-size: 0.72rem; font-weight: 800; color: #0284C7; letter-spacing: 1px; text-transform: uppercase;">ALREADY REGISTERED?</span>
+                <h3 style="font-size: 1.12rem; font-weight: 800; color: #0F172A; margin: 0.1rem 0;">CHECK VERIFICATION STATUS &amp; RETRIEVE GATE PASS</h3>
+              </div>
+              <span style="font-size: 0.72rem; font-weight: 800; color: #047857; background: #ECFDF5; border: 1px solid #A7F3D0; padding: 3px 10px; border-radius: 20px;">
+                🔒 ADMIN-VERIFIED PASS UNLOCK
+              </span>
+            </div>
+            <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+              <input type="text" id="lookup-reg-input" placeholder="Enter Registration ID (e.g. ARENIUM27-REG-1042) or College USN..." style="flex: 1; min-width: 240px; padding: 0.75rem 1rem; border: 1.5px solid #CBD5E1; border-radius: 10px; font-size: 0.88rem; color: #0F172A; background: #FFFFFF;">
+              <button type="button" id="btn-lookup-pass" class="btn btn-primary" onclick="lookupStudentPass()" style="padding: 0.75rem 1.4rem; font-weight: 800; font-size: 0.85rem; background: #0284C7; border-color: #0284C7; color: #FFFFFF; cursor: pointer;">
+                🔍 CHECK STATUS / UNLOCK PASS
+              </button>
+            </div>
+            <div id="lookup-result-msg" style="display: none; margin-top: 0.8rem; font-size: 0.85rem;"></div>
           </div>
 
           <!-- Registration Form Container -->
@@ -581,6 +610,54 @@
 
           </form>
 
+          <!-- REGISTRATION SUBMITTED & PAYMENT VERIFICATION PENDING CONTAINER -->
+          <div id="registration-submitted-container" style="display: none; margin-top: 1rem;">
+            <div style="background: #FFFFFF; border: 2px solid #F59E0B; border-radius: 24px; padding: clamp(1.5rem, 3vw, 2.5rem); box-shadow: 0 10px 40px rgba(245, 158, 11, 0.12); text-align: center; color: #0F172A;">
+              <div style="display: inline-flex; align-items: center; justify-content: center; width: 68px; height: 68px; border-radius: 50%; background: #FEF3C7; border: 2.5px solid #F59E0B; font-size: 2.2rem; margin-bottom: 1.2rem;">
+                ⏳
+              </div>
+              <div style="display: inline-block; background: #FEF3C7; color: #B45309; border: 1.5px solid #F59E0B; padding: 4px 16px; border-radius: 20px; font-weight: 800; font-size: 0.75rem; font-family: var(--font-mono); letter-spacing: 1px; margin-bottom: 0.8rem;">
+                REGISTRATION SUBMITTED • PAYMENT VERIFICATION PENDING
+              </div>
+              <h2 style="font-family: var(--font-display); font-size: clamp(1.5rem, 3vw, 2rem); color: #0F172A; font-weight: 900; margin: 0 0 0.5rem 0;">
+                REGISTRATION RECEIVED!
+              </h2>
+              <p style="color: #475569; font-size: 0.95rem; max-width: 650px; margin: 0 auto 1.5rem auto; line-height: 1.6;">
+                Thank you, <strong id="receipt-name" style="color: #0F172A;">Delegate</strong>! Your registration is assigned Registration ID: <strong id="receipt-id" style="color: #0284C7; font-family: var(--font-mono); font-size: 1.05rem;">ARENIUM27-REG-XXXX</strong>.
+              </p>
+
+              <!-- Prominent Security & Verification Notice -->
+              <div style="background: #FFFBEB; border: 1.5px solid #FCD34D; border-left: 5px solid #F59E0B; border-radius: 14px; padding: 1.2rem 1.4rem; text-align: left; max-width: 650px; margin: 0 auto 1.5rem auto;">
+                <div style="font-weight: 900; color: #92400E; font-size: 0.9rem; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.5rem;">
+                  <span>🔒</span> OFFICIAL GATE ENTRY PASS IS CURRENTLY LOCKED
+                </div>
+                <p style="color: #78350F; font-size: 0.86rem; line-height: 1.6; margin: 0;">
+                  For festival security, your <strong>Official Delegate Entry Pass with Gate QR Code</strong> will unlock and become visible <strong>once the fest administration verifies your payment transaction (UTR: <span id="receipt-utr" style="font-family: var(--font-mono); font-weight: 800;">-</span>)</strong>. Once verified, you can look up and print your pass here anytime!
+                </p>
+              </div>
+
+              <!-- Receipt Details Table -->
+              <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 14px; padding: 1.2rem; max-width: 650px; margin: 0 auto 1.5rem auto; text-align: left; font-size: 0.86rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.8rem;">
+                  <div><span style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; font-weight: 700; display: block;">College:</span> <strong id="receipt-college" style="color: #0F172A;">-</strong></div>
+                  <div><span style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; font-weight: 700; display: block;">USN / Roll ID:</span> <strong id="receipt-usn" style="color: #0284C7; font-family: var(--font-mono);">-</strong></div>
+                  <div><span style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; font-weight: 700; display: block;">Fee Paid:</span> <strong id="receipt-fee" style="color: #047857; font-size: 1rem;">-</strong></div>
+                  <div><span style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; font-weight: 700; display: block;">UTR Transaction ID:</span> <code id="receipt-utr-val" style="color: #0F172A; font-weight: 800; font-family: var(--font-mono);">-</code></div>
+                  <div style="grid-column: 1 / -1;"><span style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; font-weight: 700; display: block;">Registered Arenas:</span> <strong id="receipt-arenas" style="color: #0F172A;">-</strong></div>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 0.8rem; justify-content: center; flex-wrap: wrap;">
+                <button type="button" id="btn-receipt-refresh" class="btn btn-primary" onclick="checkLiveReceiptStatus()" style="padding: 0.75rem 1.6rem; font-weight: 800; font-size: 0.85rem; background: #0284C7; border-color: #0284C7; color: #FFFFFF; cursor: pointer;">
+                  🔄 Check Verification Status Now
+                </button>
+                <button type="button" id="btn-receipt-register-another" class="btn btn-ghost" onclick="resetRegisterForm()" style="padding: 0.75rem 1.6rem; font-size: 0.85rem; cursor: pointer;">
+                  + Register Another Delegate
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- GENERATED DELEGATE PASS (HIDDEN INITIALLY) -->
           <div id="delegate-pass-container" style="display: none;">
             <div class="delegate-pass-card">
@@ -814,6 +891,7 @@
   </footer>
 
   <!-- Scripts -->
+  <script src="js/xlsx.full.min.js"></script>
   <script src="js/qrcode.min.js"></script>
   <script src="js/main.js?v=2027_REG_TEXT_HIGH_CONTRAST_V41"></script>
   <script>
@@ -1386,11 +1464,230 @@
       if (btnClosePass1) btnClosePass1.addEventListener("click", closePassModal);
       if (btnClosePass2) btnClosePass2.addEventListener("click", closePassModal);
 
-      
+      // 5.0 Payment Verification Pending Receipt Controller
+      function showRegistrationPendingReceipt(reg) {
+        if (!reg) return;
+        window.currentPendingReg = reg;
+
+        if (form) form.style.display = "none";
+        const passContainer = document.getElementById("delegate-pass-container");
+        if (passContainer) passContainer.style.display = "none";
+
+        const receiptContainer = document.getElementById("registration-submitted-container");
+        if (!receiptContainer) return;
+
+        const nameEl = document.getElementById("receipt-name");
+        const idEl = document.getElementById("receipt-id");
+        const utrEl = document.getElementById("receipt-utr");
+        const utrValEl = document.getElementById("receipt-utr-val");
+        const collegeEl = document.getElementById("receipt-college");
+        const usnEl = document.getElementById("receipt-usn");
+        const feeEl = document.getElementById("receipt-fee");
+        const arenasEl = document.getElementById("receipt-arenas");
+
+        if (nameEl) nameEl.textContent = reg.fullName || "Delegate";
+        if (idEl) idEl.textContent = reg.id || "ARENIUM27-REG";
+        if (utrEl) utrEl.textContent = reg.utrId || "N/A";
+        if (utrValEl) utrValEl.textContent = reg.utrId || "N/A";
+        if (collegeEl) collegeEl.textContent = reg.college || "Presidency University";
+        if (usnEl) usnEl.textContent = reg.usn || "N/A";
+        if (feeEl) feeEl.textContent = reg.feePaid || "₹200";
+
+        const arenas = [reg.event1Name || reg.eventName, reg.event2Name, reg.event3Name]
+          .filter(Boolean)
+          .filter(x => x !== "-")
+          .join(" • ");
+        if (arenasEl) arenasEl.textContent = arenas || "General Arena Entry";
+
+        receiptContainer.style.display = "block";
+        receiptContainer.scrollIntoView({ behavior: "smooth" });
+      }
+
+      // Centralized Dynamic API Bridge between ARENIUM 27 and ARENIUM 27 CORE
+      async function fetchFromCore(endpoint, options = {}) {
+        const isLocal = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+        const endpoints = isLocal
+          ? ["http://localhost:5000/api", "https://arenium-27-core.vercel.app/api"]
+          : ["https://arenium-27-core.vercel.app/api", "http://localhost:5000/api"];
+
+        let lastErr = null;
+        for (const base of endpoints) {
+          try {
+            const url = `${base}${endpoint}`;
+            const res = await fetch(url, options);
+            if (res.ok || res.status === 400 || res.status === 403 || res.status === 404) {
+              return res;
+            }
+          } catch (err) {
+            lastErr = err;
+          }
+        }
+        throw lastErr || new Error("ARENIUM CORE backend server unreachable");
+      }
+
+      window.checkLiveReceiptStatus = async function() {
+        const reg = window.currentPendingReg || window.currentActiveReg;
+        if (!reg) return;
+        const btn = document.getElementById("btn-receipt-refresh");
+        if (btn) { btn.disabled = true; btn.textContent = "Checking Server Status..."; }
+
+        try {
+          let verifiedReg = null;
+          try {
+            const res = await fetchFromCore(`/registrations/lookup/${encodeURIComponent(reg.id)}`);
+            if (res && res.ok) {
+              const data = await res.json();
+              if (data.passUnlocked && data.registration) {
+                verifiedReg = data.registration;
+              }
+            }
+          } catch (e) {
+            console.warn("Backend server not responding, checking FestDB:", e);
+          }
+
+          if (!verifiedReg) {
+            const db = FestDB.getData();
+            const found = (db.registrations || []).find(r => r.id === reg.id || (r.usn && r.usn.toLowerCase() === (reg.usn || '').toLowerCase()));
+            if (found && (found.status === "Confirmed" || found.status === "Checked In" || found.paymentVerified)) {
+              verifiedReg = found;
+            }
+          }
+
+          if (verifiedReg) {
+            alert("🎉 Payment Approved! Your Official ARENIUM 27 Delegate Pass & QR Code is now UNLOCKED.");
+            renderDelegatePass(verifiedReg);
+          } else {
+            alert("⏳ Payment Verification In Progress:\n\nAdmin has not completed verifying transaction UTR: " + (reg.utrId || 'N/A') + " yet. Your pass will unlock immediately once approved by admin.");
+          }
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = "🔄 Check Verification Status Now"; }
+        }
+      };
+
+      window.resetRegisterForm = function() {
+        if (form) {
+          form.reset();
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = "⚡ CONFIRM REGISTRATION &amp; GET PASS";
+          }
+          initTeamMembers(3);
+          populateEventSelects();
+          updatePricing();
+          form.style.display = "block";
+          form.scrollIntoView({ behavior: "smooth" });
+        }
+        const passContainer = document.getElementById("delegate-pass-container");
+        if (passContainer) passContainer.style.display = "none";
+        const receiptContainer = document.getElementById("registration-submitted-container");
+        if (receiptContainer) receiptContainer.style.display = "none";
+      };
+
+      window.lookupStudentPass = async function() {
+        const inp = document.getElementById("lookup-reg-input");
+        const query = (inp ? inp.value.trim() : "");
+        const msgEl = document.getElementById("lookup-result-msg");
+        if (!query) {
+          alert("Please enter your Registration ID (e.g. ARENIUM27-REG-1042) or College USN.");
+          return;
+        }
+
+        if (msgEl) {
+          msgEl.style.display = "block";
+          msgEl.innerHTML = `<span style="color:#0284C7; font-weight:700;">🔄 Searching ARENIUM 27 database...</span>`;
+        }
+
+        let foundReg = null;
+        let isPassUnlocked = false;
+
+        // Try CORE backend first (MongoDB Atlas)
+        try {
+          const res = await fetchFromCore(`/registrations/lookup/${encodeURIComponent(query)}`);
+          if (res && res.ok) {
+            const data = await res.json();
+            foundReg = data.registration;
+            isPassUnlocked = data.passUnlocked;
+          }
+        } catch (e) {
+          console.warn("Backend lookup unreachable, checking FestDB:", e);
+        }
+
+        // Fallback to local FestDB
+        if (!foundReg) {
+          const db = FestDB.getData();
+          const qLower = query.toLowerCase();
+          foundReg = (db.registrations || []).find(r => 
+            (r.id && r.id.toLowerCase() === qLower) ||
+            (r.usn && r.usn.toLowerCase() === qLower) ||
+            (r.email && r.email.toLowerCase() === qLower) ||
+            (r.utrId && r.utrId.toLowerCase() === qLower)
+          );
+          if (foundReg) {
+            isPassUnlocked = (foundReg.status === "Confirmed" || foundReg.status === "Checked In" || foundReg.paymentVerified === true);
+          }
+        }
+
+        if (!foundReg) {
+          if (msgEl) {
+            msgEl.innerHTML = `
+              <div style="background: #FEF2F2; border: 1.5px solid #FCA5A5; color: #DC2626; padding: 0.6rem 0.9rem; border-radius: 8px; font-weight: 700;">
+                ✕ No registration found matching "${query}". Please check spelling or register below.
+              </div>
+            `;
+          }
+          return;
+        }
+
+        if (!isPassUnlocked) {
+          if (foundReg.status === "Rejected") {
+            if (msgEl) {
+              msgEl.innerHTML = `
+                <div style="background: #FEF2F2; border: 1.5px solid #FCA5A5; color: #DC2626; padding: 0.6rem 0.9rem; border-radius: 8px;">
+                  <strong>✕ Registration Rejected:</strong> The payment verification for registration ${foundReg.id} was rejected. Please contact event desk.
+                </div>
+              `;
+            }
+          } else {
+            if (msgEl) {
+              msgEl.innerHTML = `
+                <div style="background: #FFFBEB; border: 1.5px solid #FCD34D; color: #B45309; padding: 0.6rem 0.9rem; border-radius: 8px;">
+                  <strong>⏳ Payment Under Verification:</strong> Registration found for <strong>${foundReg.fullName}</strong> (${foundReg.id}). Payment transaction (UTR: ${foundReg.utrId || 'N/A'}) is awaiting admin verification. Pass &amp; QR code will unlock once approved.
+                </div>
+              `;
+            }
+            showRegistrationPendingReceipt(foundReg);
+          }
+          return;
+        }
+
+        // Pass is verified & unlocked!
+        if (msgEl) {
+          msgEl.innerHTML = `
+            <div style="background: #ECFDF5; border: 1.5px solid #A7F3D0; color: #047857; padding: 0.6rem 0.9rem; border-radius: 8px; font-weight: 700;">
+              ✓ Payment Verified! Official Delegate Pass unlocked for ${foundReg.fullName}.
+            </div>
+          `;
+        }
+        renderDelegatePass(foundReg);
+      };
+
       // 5.1 Centralized Delegate Pass & Terminal QR Renderer
       function renderDelegatePass(reg) {
         if (!reg) return;
+
+        // Enforce payment verification requirement:
+        // Pass is ONLY visible to the student once payment is verified with the admin!
+        const isVerified = (reg.status === "Confirmed" || reg.status === "Checked In" || reg.paymentVerified === true);
+        if (!isVerified) {
+          showRegistrationPendingReceipt(reg);
+          return;
+        }
+
         window.currentActiveReg = reg;
+
+        // Hide receipt if open
+        const receiptContainer = document.getElementById("registration-submitted-container");
+        if (receiptContainer) receiptContainer.style.display = "none";
 
         document.getElementById("pass-id-display").textContent = reg.id || "ARENIUM27-REG";
         document.getElementById("pass-name").textContent = reg.fullName || "Delegate";
@@ -1706,9 +2003,23 @@
             teamMembersList: regType === "Team" ? teamMembersList : [],
             utrId: utr,
             paymentScreenshot: uploadedScreenshotBase64,
-            status: "Confirmed",
+            status: "Pending Verification",
+            paymentVerified: false,
             timestamp: new Date().toISOString()
           };
+
+          // Push to central CORE backend in real-time (Atlas Cloud Persistence)
+          try {
+            fetchFromCore("/registrations", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(newRegistration)
+            }).then(r => r.json()).then(data => {
+              console.log("Synced new registration to CORE backend:", data);
+            }).catch(e => {
+              console.warn("Backend server not reachable right now, saved locally:", e);
+            });
+          } catch(err) {}
 
           // Push to Google Sheets in real-time
           const googleSheetWebhook = (regConfig && regConfig.googleSheetUrl) || "https://script.google.com/macros/s/AKfycbyQf200fHwcydhLqNW2YXVaADme2a4p0RXyc0at1YspDawEJ9oBIQw75tKY97LN35QH/exec";
@@ -1757,12 +2068,13 @@
           currentDB.registrations.unshift(newRegistration);
           FestDB.saveData(currentDB);
 
-          renderDelegatePass(newRegistration);
+          // For security, show Pending Verification Receipt! Pass only unlocks upon admin approval
+          showRegistrationPendingReceipt(newRegistration);
         });
       }
 
       // 6. Register Another Participant button
-            // Check for active registration on this browser to show quick-access banner
+      // Check for active registration on this browser to show quick-access banner
       const existingDB = FestDB.getData();
       if (existingDB.registrations && existingDB.registrations.length > 0) {
         const latestReg = existingDB.registrations[0];
@@ -1773,9 +2085,16 @@
 
         if (recentBanner && bannerName && bannerId && bannerBtn) {
           recentBanner.style.display = "block";
-          bannerName.textContent = latestReg.fullName + (latestReg.teamName ? ` (Squad: ${latestReg.teamName})` : "");
+          const isLatestVerified = (latestReg.status === "Confirmed" || latestReg.status === "Checked In" || latestReg.paymentVerified);
+          bannerName.textContent = latestReg.fullName + (latestReg.teamName ? ` (Squad: ${latestReg.teamName})` : "") + (isLatestVerified ? " [✓ VERIFIED PASS]" : " [⏳ PENDING VERIFICATION]");
           bannerId.textContent = latestReg.id;
-          bannerBtn.onclick = () => renderDelegatePass(latestReg);
+          bannerBtn.onclick = () => {
+            if (isLatestVerified) {
+              renderDelegatePass(latestReg);
+            } else {
+              showRegistrationPendingReceipt(latestReg);
+            }
+          };
         }
       }
 

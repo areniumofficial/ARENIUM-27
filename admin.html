@@ -1166,6 +1166,9 @@
           <a href="index.html" target="_blank" class="btn btn-ghost" style="padding: 0.5rem 0.9rem; font-size: 0.75rem;">
             🌐 VIEW LIVE WEBSITE &gt;
           </a>
+          <a href="http://localhost:5173" target="_blank" class="btn btn-secondary" style="padding: 0.5rem 0.9rem; font-size: 0.75rem; background: #0284C7; border-color: #0284C7; color: #FFFFFF; font-weight: 800;" title="Open ARENIUM 27 CORE Operations Platform">
+            ⚡ ARENIUM CORE ↗
+          </a>
           <button id="admin-export-btn" class="btn btn-primary" style="padding: 0.5rem 0.9rem; font-size: 0.75rem;">
             💾 EXPORT JSON
           </button>
@@ -1360,15 +1363,25 @@
             </p>
           </div>
           <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+            <input type="file" id="admin-excel-import-file" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importRegistrationsFromExcelFile(this)">
             <button class="btn btn-secondary" onclick="switchAdminTab('tab-scanner')" style="background: rgba(2, 132, 199, 0.15); border: 1.5px solid #0284C7; color: #0284C7; font-weight: 700; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.6rem 1.1rem; font-size: 0.82rem;">📷 Scan Pass QR</button>
-            <button class="btn btn-secondary" id="btn-sync-sheet" onclick="syncRegistrationsFromGoogleSheet()" style="background: rgba(16, 185, 129, 0.15); border: 1.5px solid #10B981; color: #6EE7B7; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.6rem 1.1rem; font-size: 0.82rem; font-weight: 700;">
-              🔄 Sync from Google Sheet
+            <button class="btn btn-secondary" onclick="document.getElementById('admin-excel-import-file').click()" style="background: rgba(14, 165, 233, 0.15); border: 1.5px solid #0284C7; color: #0284C7; font-weight: 700; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.6rem 1.1rem; font-size: 0.82rem;">
+              📥 Import Excel (.xlsx)
             </button>
-            <button class="btn btn-primary" onclick="exportRegistrationsCSV()">
-              📥 Export to CSV / Excel
+            <button class="btn btn-primary" onclick="exportRegistrationsExcel()" style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.6rem 1.1rem; font-size: 0.82rem; font-weight: 700;">
+              📤 Export to Excel (.xlsx)
+            </button>
+            <button class="btn btn-ghost" onclick="batchApproveAllPendingPayments()" style="color: #047857; border-color: #10B981; font-weight: 800; font-size: 0.82rem;">
+              ✓ Verify All Pending Payments
+            </button>
+            <button class="btn btn-secondary" id="btn-sync-core" onclick="syncWithCoreBackend()" style="background: rgba(2, 132, 199, 0.12); border: 1.5px solid #0284C7; color: #0284C7; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.6rem 1.1rem; font-size: 0.82rem; font-weight: 700;">
+              ⚡ Sync with CORE Server
+            </button>
+            <button class="btn btn-secondary" id="btn-sync-sheet" onclick="syncRegistrationsFromGoogleSheet()" style="background: rgba(16, 185, 129, 0.15); border: 1.5px solid #10B981; color: #6EE7B7; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.6rem 1.1rem; font-size: 0.82rem; font-weight: 700;">
+              🔄 Google Sheet
             </button>
             <button class="btn btn-ghost" onclick="openManualRegModal()">
-              + Add Walk-in Registration
+              + Add Walk-in
             </button>
             <a href="register.html" target="_blank" class="btn btn-ghost">
               ↗ Live Portal View
@@ -2119,6 +2132,7 @@
   </div>
   </div><!-- /#admin-main-interface -->
 
+  <script src="js/xlsx.full.min.js"></script>
   <script src="js/html5-qrcode.min.js"></script>
   <script src="js/qrcode.min.js"></script>
   <script src="js/main.js?v=2027_REG_TEXT_HIGH_CONTRAST_V41"></script>

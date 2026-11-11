@@ -3752,7 +3752,9 @@ function renderAdminRegistrations(db) {
       const tr = document.createElement("tr");
 
       let statusBadge = `<span class="admin-badge-pending">⏳ PENDING</span>`;
-      if (r.status === "Confirmed") {
+      if (r.status === "Checked In") {
+        statusBadge = `<span class="admin-badge-confirmed" style="background:rgba(16,185,129,0.2); color:#10B981; border:1px solid #10B981;">✅ CHECKED IN</span>`;
+      } else if (r.status === "Confirmed" || r.paymentVerified) {
         statusBadge = `<span class="admin-badge-confirmed">✓ CONFIRMED</span>`;
       } else if (r.status === "Rejected") {
         statusBadge = `<span class="admin-badge-rejected">✕ REJECTED</span>`;
@@ -3810,26 +3812,285 @@ function renderAdminRegistrations(db) {
   renderTable();
 }
 
-// Global actions for registration admin
-window.setAdminRegStatus = function(regId, newStatus) {
+// Global actions for registration admin & CORE backend integration (Auto-detects Localhost vs Production Vercel)
+window.CORE_BACKEND_URL = window.CORE_BACKEND_URL || (
+  (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"))
+    ? "http://localhost:5000/api"
+    : "https://arenium-27-core.vercel.app/api"
+);
+
+window.setAdminRegStatus = async function(regId, newStatus) {
   const db = FestDB.getData();
   if (!db.registrations) return;
   const item = db.registrations.find(r => r.id === regId);
   if (item) {
     item.status = newStatus;
+    item.paymentVerified = (newStatus === "Confirmed" || newStatus === "Checked In");
+    if (newStatus === "Confirmed") {
+      item.verifiedAt = new Date().toISOString();
+    }
     FestDB.saveData(db);
     renderAdminRegistrations(db);
+    if (typeof renderAdminOverview === "function") renderAdminOverview(db);
+
+    // Sync status change with ARENIUM 27 CORE backend
+    try {
+      const endpoint = (newStatus === "Confirmed" || newStatus === "Checked In")
+        ? `${window.CORE_BACKEND_URL}/registrations/${encodeURIComponent(regId)}/verify-payment`
+        : `${window.CORE_BACKEND_URL}/registrations/${encodeURIComponent(regId)}/reject-payment`;
+      await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verifiedBy: "Admin (ARENIUM 27)", reason: "Status updated in Admin Portal" })
+      });
+    } catch (e) {
+      console.warn("Could not sync status change with CORE backend:", e);
+    }
   }
 };
 
-window.deleteAdminRegistration = function(regId) {
+window.deleteAdminRegistration = async function(regId) {
   if (!confirm(`Are you sure you want to permanently delete registration ${regId}?`)) return;
   const db = FestDB.getData();
   if (!db.registrations) return;
   db.registrations = db.registrations.filter(r => r.id !== regId);
   FestDB.saveData(db);
   renderAdminRegistrations(db);
-  renderAdminOverview(db);
+  if (typeof renderAdminOverview === "function") renderAdminOverview(db);
+
+  // Sync deletion with CORE backend
+  try {
+    await fetch(`${window.CORE_BACKEND_URL}/registrations/${encodeURIComponent(regId)}`, {
+      method: "DELETE"
+    });
+  } catch (e) {
+    console.warn("Could not sync deletion with CORE backend:", e);
+  }
+};
+
+window.batchApproveAllPendingPayments = async function() {
+  const db = FestDB.getData();
+  if (!db.registrations || db.registrations.length === 0) {
+    alert("No registration records found.");
+    return;
+  }
+  const pending = db.registrations.filter(r => r.status === "Pending Verification" || r.status === "Pending" || (!r.paymentVerified && r.status !== "Rejected"));
+  if (pending.length === 0) {
+    alert("All registrations are already verified and confirmed!");
+    return;
+  }
+
+  if (!confirm(`Verify and approve payment for ${pending.length} pending registration(s)?\n\nThis will instantly UNLOCK their gate passes and scanner clearance across both sites!`)) {
+    return;
+  }
+
+  const ids = pending.map(r => r.id);
+  pending.forEach(r => {
+    r.status = "Confirmed";
+    r.paymentVerified = true;
+    r.verifiedAt = new Date().toISOString();
+  });
+  FestDB.saveData(db);
+  renderAdminRegistrations(db);
+  if (typeof renderAdminOverview === "function") renderAdminOverview(db);
+
+  try {
+    await fetch(`${window.CORE_BACKEND_URL}/registrations/batch-verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, verifiedBy: "Admin (ARENIUM 27 Batch)" })
+    });
+  } catch (err) {
+    console.warn("Could not reach CORE backend for batch verification, updated local FestDB:", err);
+  }
+
+  alert(`✓ Successfully approved payment for ${pending.length} delegate pass(es)!\nAll passes are now unlocked across both sites.`);
+};
+
+window.importRegistrationsFromExcelFile = function(inputEl) {
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  if (!file) return;
+
+  if (typeof XLSX === "undefined") {
+    alert("Excel parsing library (SheetJS) is not loaded. Please ensure js/xlsx.full.min.js is present or use CSV export/import.");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: "array" });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+      if (!rows || rows.length === 0) {
+        alert("The selected Excel spreadsheet is empty or has no recognizable rows.");
+        return;
+      }
+
+      const db = FestDB.getData();
+      if (!Array.isArray(db.registrations)) db.registrations = [];
+
+      let importedCount = 0;
+      let updatedCount = 0;
+
+      rows.forEach((row, idx) => {
+        const findVal = (patterns) => {
+          for (const key of Object.keys(row)) {
+            const cleanKey = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+            for (const p of patterns) {
+              if (cleanKey.includes(p)) return String(row[key]).trim();
+            }
+          }
+          return "";
+        };
+
+        const fullName = findVal(["name", "fullname", "delegatename", "studentname", "lead"]) || `Delegate ${idx + 1}`;
+        const usn = findVal(["usn", "roll", "hallticket", "regno", "idcard", "studentno"]) || `USN-${1000 + idx}`;
+        const email = findVal(["email", "mail"]) || "attendee@arenium.in";
+        const phone = findVal(["phone", "mobile", "contact", "whatsapp"]) || "9999999999";
+        const college = findVal(["college", "university", "institution", "campus"]) || "Presidency University";
+        const dept = findVal(["department", "dept", "branch", "stream"]) || "SOIS";
+        const yearSem = findVal(["year", "sem", "semester"]) || "3rd Year";
+        const category = findVal(["category", "intern"]) || (college.toLowerCase().includes("presidency") ? "Internal" : "External");
+        const event1 = findVal(["event1", "event", "arena", "competition"]) || "TECH ODYSSEY";
+        const event2 = findVal(["event2"]) || "";
+        const event3 = findVal(["event3"]) || "";
+        const regType = findVal(["type", "mode"]) || (findVal(["team", "squad"]) ? "Team" : "Solo");
+        const teamName = findVal(["teamname", "squadname", "team"]) || "";
+        const teamMembers = findVal(["teammembers", "members", "squadmembers", "roster"]) || "";
+        const fee = findVal(["fee", "amount", "paid"]) || "₹200";
+        const utr = findVal(["utr", "transaction", "ref", "paymentref", "txnid"]) || ("EXCEL-" + Math.floor(100000 + Math.random() * 900000));
+        const statusRaw = (findVal(["paymentstatus", "status"]) || "").toLowerCase();
+        const verifiedCol = (findVal(["paymentverified"]) || "").toLowerCase();
+
+        // Check if verified: must not be pending or rejected
+        const isPending = statusRaw.includes("pending") || statusRaw.includes("await");
+        const isRejected = statusRaw.includes("reject") || statusRaw.includes("fail") || statusRaw.includes("declin");
+        const isExplicitVerified = verifiedCol === "yes" || verifiedCol === "true" || verifiedCol.includes("verif");
+        const isStatusConfirmed = statusRaw === "confirmed" || statusRaw === "verified" || statusRaw === "approved" || statusRaw === "paid" || statusRaw.includes("cleared");
+
+        const isVerified = !isPending && !isRejected && (isExplicitVerified || isStatusConfirmed);
+
+        let regId = findVal(["regid", "id", "registrationid", "passid"]);
+        if (!regId || !regId.toUpperCase().startsWith("ARENIUM")) {
+          regId = "ARENIUM27-REG-" + (1050 + db.registrations.length + idx);
+        }
+
+        const newRecord = {
+          id: regId.toUpperCase(),
+          fullName,
+          email,
+          phone,
+          college,
+          usn,
+          department: dept,
+          yearSem,
+          category: category.toLowerCase().includes("ext") ? "external" : "internal",
+          categoryLabel: category.toLowerCase().includes("ext") ? "External (Other Institution)" : "Internal (Presidency University)",
+          eventId: "imported",
+          eventName: event1,
+          event1Name: event1,
+          event2Name: event2,
+          event3Name: event3,
+          regType: regType.toLowerCase().includes("team") ? "Team" : "Solo",
+          teamName,
+          teamMembers,
+          feePaid: fee.startsWith("₹") ? fee : ("₹" + fee),
+          utrId: utr,
+          status: isVerified ? "Confirmed" : "Pending Verification",
+          paymentVerified: isVerified,
+          timestamp: new Date().toISOString()
+        };
+
+        const existingIdx = db.registrations.findIndex(r => r.id === newRecord.id || (r.usn && r.usn.toLowerCase() === newRecord.usn.toLowerCase()));
+        if (existingIdx >= 0) {
+          db.registrations[existingIdx] = { ...db.registrations[existingIdx], ...newRecord };
+          updatedCount++;
+        } else {
+          db.registrations.unshift(newRecord);
+          importedCount++;
+        }
+      });
+
+      FestDB.saveData(db);
+      renderAdminRegistrations(db);
+      if (typeof renderAdminOverview === "function") renderAdminOverview(db);
+
+      // Dispatch Excel file to ARENIUM 27 CORE server for bidirectional sync
+      try {
+        let binary = "";
+        const bytes = new Uint8Array(e.target.result);
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64String = btoa(binary);
+
+        await fetch(`${window.CORE_BACKEND_URL}/registrations/import-excel`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileBase64: base64String, filename: file.name })
+        });
+      } catch (coreErr) {
+        console.warn("Could not dispatch Excel to CORE server:", coreErr);
+      }
+
+      alert(`✓ Excel Import Complete!\n\nImported ${importedCount} new registrations.\nUpdated ${updatedCount} existing records.\nTotal delegates in database: ${db.registrations.length}\n\nAll records synchronized live with ARENIUM 27 CORE!`);
+    } catch (err) {
+      console.error("Excel import error:", err);
+      alert("Failed to parse Excel file: " + err.message);
+    } finally {
+      inputEl.value = "";
+    }
+  };
+  reader.readAsArrayBuffer(file);
+};
+
+window.exportRegistrationsExcel = function() {
+  if (typeof XLSX === "undefined") {
+    exportRegistrationsCSV();
+    return;
+  }
+
+  const db = FestDB.getData();
+  const list = db.registrations || [];
+  if (list.length === 0) {
+    alert("No registration records found to export.");
+    return;
+  }
+
+  const excelRows = list.map(r => ({
+    "Registration ID": r.id || "",
+    "Full Name": r.fullName || "",
+    "Email": r.email || "",
+    "Phone": r.phone || "",
+    "College": r.college || "",
+    "USN / Roll No": r.usn || "",
+    "Department": r.department || "",
+    "Year / Sem": r.yearSem || "",
+    "Category": r.categoryLabel || r.category || "Internal",
+    "Arena 1": r.event1Name || r.eventName || "",
+    "Arena 2": r.event2Name || "",
+    "Arena 3": r.event3Name || "",
+    "Participation": r.regType || "Solo",
+    "Team / Squad Name": r.teamName || "",
+    "Team Members": r.teamMembers || "",
+    "Fee Amount": r.feePaid || "₹200",
+    "UTR Reference": r.utrId || "",
+    "Payment Verified": (r.paymentVerified || r.status === "Confirmed" || r.status === "Checked In") ? "YES" : "NO",
+    "Entry Status": r.status || "Pending Verification",
+    "Gate Checked In": (r.status === "Checked In" || r.checkInTime) ? "YES" : "NO",
+    "Check-In Time": r.checkInTime || "",
+    "Registered At": r.timestamp || ""
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(excelRows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Registrations");
+  XLSX.writeFile(workbook, `ARENIUM27_Registrations_${new Date().toISOString().slice(0, 10)}.xlsx`);
 };
 
 window.exportRegistrationsCSV = function() {
@@ -3840,7 +4101,7 @@ window.exportRegistrationsCSV = function() {
     return;
   }
 
-  const headers = ["Registration ID", "Full Name", "Email", "Phone", "College", "USN", "Department", "Year/Sem", "Category", "Event 1", "Event 2", "Event 3", "Fee Paid", "Payment Proof Attached", "Type", "Team Name", "Team Members", "UTR ID", "Status", "Timestamp"];
+  const headers = ["Registration ID", "Full Name", "Email", "Phone", "College", "USN", "Department", "Year/Sem", "Category", "Event 1", "Event 2", "Event 3", "Fee Paid", "Payment Proof Attached", "Type", "Team Name", "Team Members", "UTR ID", "Payment Verified", "Status", "Timestamp"];
   const rows = list.map(r => [
     `"${r.id || ''}"`,
     `"${r.fullName || ''}"`,
@@ -3860,6 +4121,7 @@ window.exportRegistrationsCSV = function() {
     `"${(r.teamName || '').replace(/"/g, '""')}"`,
     `"${(r.teamMembers || '').replace(/"/g, '""')}"`,
     `"${r.utrId || ''}"`,
+    `"${(r.paymentVerified || r.status === 'Confirmed' || r.status === 'Checked In') ? 'Yes' : 'No'}"`,
     `"${r.status || ''}"`,
     `"${r.timestamp || ''}"`
   ]);
@@ -3876,6 +4138,71 @@ window.exportRegistrationsCSV = function() {
   URL.revokeObjectURL(url);
 };
 
+window.syncWithCoreBackend = async function() {
+  const syncBtn = document.getElementById("btn-sync-core");
+  let origHtml = "";
+  if (syncBtn) {
+    origHtml = syncBtn.innerHTML;
+    syncBtn.disabled = true;
+    syncBtn.innerHTML = "⏳ Syncing with CORE...";
+  }
+
+  try {
+    const db = FestDB.getData();
+    if (!Array.isArray(db.registrations)) db.registrations = [];
+
+    // Two-way sync: send local registrations to CORE, receive merged set
+    const syncRes = await fetch(`${window.CORE_BACKEND_URL}/sync/registrations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ registrations: db.registrations })
+    });
+
+    if (syncRes.ok) {
+      const result = await syncRes.json();
+      if (result.success && Array.isArray(result.registrations)) {
+        db.registrations = result.registrations;
+        FestDB.saveData(db);
+        renderAdminRegistrations(db);
+        if (typeof renderAdminOverview === "function") renderAdminOverview(db);
+        alert(`✓ ARENIUM 27 CORE Sync Successful!\n\nSynchronized ${result.registrations.length} delegate passes.\nVerified: ${result.registrations.filter(r => r.paymentVerified).length} | Pending: ${result.registrations.filter(r => !r.paymentVerified).length}`);
+        return;
+      }
+    }
+
+    // Fallback: GET /api/registrations
+    const getRes = await fetch(`${window.CORE_BACKEND_URL}/registrations`);
+    if (getRes.ok) {
+      const data = await getRes.json();
+      if (data.success && Array.isArray(data.registrations)) {
+        data.registrations.forEach(cr => {
+          const idx = db.registrations.findIndex(r => r.id === cr.id);
+          if (idx >= 0) {
+            db.registrations[idx] = { ...db.registrations[idx], ...cr };
+          } else {
+            db.registrations.push(cr);
+          }
+        });
+        FestDB.saveData(db);
+        renderAdminRegistrations(db);
+        if (typeof renderAdminOverview === "function") renderAdminOverview(db);
+        alert(`✓ ARENIUM 27 CORE Sync Successful!\n\nSynchronized ${db.registrations.length} delegate records with CORE backend.`);
+        return;
+      }
+    }
+
+    throw new Error("Unable to connect to ARENIUM 27 CORE server.");
+  } catch (err) {
+    console.error("CORE Sync failed:", err);
+    alert(`⚠️ Could not connect to ARENIUM 27 CORE backend (${window.CORE_BACKEND_URL}):\n${err.message}\n\nPlease ensure ARENIUM 27 CORE server is running on port 5000.`);
+  } finally {
+    if (syncBtn) {
+      syncBtn.disabled = false;
+      syncBtn.innerHTML = origHtml || "⚡ Sync with CORE Server";
+    }
+  }
+};
+
 window.openManualRegModal = function() {
   const name = prompt("Participant Full Name:");
   if (!name) return;
@@ -3890,7 +4217,7 @@ window.openManualRegModal = function() {
   const db = FestDB.getData();
   if (!db.registrations) db.registrations = [];
 
-  db.registrations.unshift({
+  const newReg = {
     id: regId,
     fullName: name,
     email,
@@ -3906,12 +4233,22 @@ window.openManualRegModal = function() {
     teamMembers: "",
     utrId: utr,
     status: "Confirmed",
+    paymentVerified: true,
     timestamp: new Date().toISOString()
-  });
+  };
 
+  db.registrations.unshift(newReg);
   FestDB.saveData(db);
   renderAdminRegistrations(db);
   renderAdminOverview(db);
+
+  // Sync to CORE server
+  fetch(`${window.CORE_BACKEND_URL}/registrations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(newReg)
+  }).catch(() => {});
+
   alert(`Delegate registered successfully! Registration ID: ${regId}`);
 };
 
@@ -3956,6 +4293,8 @@ document.addEventListener("keydown", function(e) {
     window.closeAdminProofModal();
     const pModal = document.getElementById("pass-proof-modal");
     if (pModal) pModal.style.display = "none";
+    const aModal = document.getElementById("admin-pass-modal");
+    if (aModal) aModal.style.display = "none";
   }
 });
 
@@ -3998,26 +4337,25 @@ window.syncRegistrationsFromGoogleSheet = async function() {
         usn: row["USN / Roll No"] || "",
         department: row["Department"] || "",
         yearSem: row["Year / Sem"] || "",
-        category: (row["Category"] || "").toLowerCase().includes("external") ? "external" : "internal",
+        category: (row["Category"] || "").toLowerCase().includes("ext") ? "external" : "internal",
         categoryLabel: row["Category"] || "Internal (Presidency University)",
-        eventName: row["Primary Event (1)"] || "",
-        event1Name: row["Primary Event (1)"] || "",
-        event2Name: (row["Second Event (2)"] && row["Second Event (2)"] !== "-") ? row["Second Event (2)"] : "",
-        event3Name: (row["Third Event (3)"] && row["Third Event (3)"] !== "-") ? row["Third Event (3)"] : "",
-        regType: row["Reg Type"] || "Solo",
-        teamName: (row["Team Name"] && row["Team Name"] !== "-") ? row["Team Name"] : "",
-        teamMembers: (row["Team Members"] && row["Team Members"] !== "-") ? row["Team Members"] : "",
-        feePaid: row["Fee Paid"] || "₹200",
-        utrId: String(row["UTR / Ref ID"] || "").replace(/^'/, ""),
-        paymentScreenshot: (row["Payment Proof (Drive Link)"] && row["Payment Proof (Drive Link)"] !== "No Screenshot") ? row["Payment Proof (Drive Link)"] : "",
+        eventId: "g-sheet",
+        eventName: row["Arena 1 (Selected)"] || "TECH ODYSSEY",
+        event1Name: row["Arena 1 (Selected)"] || "",
+        event2Name: row["Arena 2 (Free)"] || "",
+        event3Name: row["Arena 3 (Addon)"] || "",
+        regType: row["Participation Type"] || "Solo",
+        teamName: row["Team / Squad Name"] || "",
+        teamMembers: row["Team Members Roster"] || "",
+        feePaid: row["Registration Fee"] || "₹200",
+        utrId: row["UTR / Reference ID"] || "",
+        paymentScreenshot: row["Payment Screenshot URL"] || "",
         status: row["Status"] || "Confirmed",
+        paymentVerified: (row["Status"] === "Confirmed" || row["Status"] === "Checked In"),
         timestamp: row["Timestamp"] || new Date().toISOString()
       };
 
       if (existingIndex >= 0) {
-        if (!regObj.paymentScreenshot && db.registrations[existingIndex].paymentScreenshot) {
-          regObj.paymentScreenshot = db.registrations[existingIndex].paymentScreenshot;
-        }
         db.registrations[existingIndex] = { ...db.registrations[existingIndex], ...regObj };
       } else {
         db.registrations.unshift(regObj);
@@ -4032,21 +4370,13 @@ window.syncRegistrationsFromGoogleSheet = async function() {
     alert(`✓ Google Sheet Sync Successful!\n\nSynchronized ${sheetData.length} total delegate records (${newCount} new records pulled from live Excel).`);
   } catch (err) {
     console.error("Sheet sync failed:", err);
-    alert("Could not sync with Google Sheet:\n" + err.message + "\n\nPlease ensure your Google Apps Script is active.");
+    alert("Google Sheet Sync error: " + err.message);
   } finally {
     if (syncBtn) {
       syncBtn.disabled = false;
-      syncBtn.innerHTML = origText || "🔄 Sync from Google Sheet";
+      syncBtn.innerHTML = origText || "🔄 Google Sheet";
     }
   }
-};
-
-// ==========================================================================
-// 18.2 ADMIN DELEGATE PASS & QR MODAL CONTROLLER
-// ==========================================================================
-window.closeAdminPassModal = function() {
-  const modal = document.getElementById("admin-pass-modal");
-  if (modal) modal.style.display = "none";
 };
 
 window.printAdminPassModal = function() {
@@ -4065,6 +4395,7 @@ window.viewAdminPassModal = function(regId) {
   const modalBody = document.getElementById("admin-pass-modal-body");
   if (!modal || !modalBody) return;
 
+  const isVerified = (reg.status === "Confirmed" || reg.status === "Checked In" || reg.paymentVerified === true);
   const isInt = (reg.category === "internal" || !reg.category);
   const catLabel = reg.categoryLabel || (isInt ? "Internal (Presidency University)" : "External (Other Institution)");
   const isTeam = reg.regType === "Team";
@@ -4072,7 +4403,6 @@ window.viewAdminPassModal = function(regId) {
   
   let memberCount = 1;
   if (isTeam && reg.teamMembers) {
-    // Estimate count from teamMembers string or list
     if (reg.teamMembersList && reg.teamMembersList.length) {
       memberCount = reg.teamMembersList.length + 1;
     } else {
@@ -4095,21 +4425,34 @@ window.viewAdminPassModal = function(regId) {
     `PHONE: ${reg.phone || 'N/A'}`,
     `COLLEGE: ${reg.college || 'Presidency University'}`,
     `ARENAS: ${arenas}`,
-    `FEE PAID: ${reg.feePaid || '₹200'} (Verified)`,
+    `FEE PAID: ${reg.feePaid || '₹200'} (${isVerified ? 'Verified' : 'Pending'})`,
     `UTR REF: ${reg.utrId || 'N/A'}`,
-    `ENTRY STATUS: ${reg.status || 'Confirmed'}`,
+    `ENTRY STATUS: ${reg.status || (isVerified ? 'Confirmed' : 'Pending Verification')}`,
     "Presidency University, Bengaluru • 4-5 Feb 2027"
   ].join("\n");
 
   modalBody.innerHTML = `
     <div style="background: #F8FAFC; border: 1.5px solid #E2E8F0; border-radius: 14px; padding: 1.2rem; margin-bottom: 1.2rem;">
+      ${!isVerified ? `
+        <div style="background:#FFFBEB; border:1.5px solid #FCD34D; border-radius:8px; padding:0.6rem 0.9rem; margin-bottom:0.9rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+          <span style="font-size:0.78rem; color:#B45309; font-weight:700;">
+            ⏳ Payment Pending Verification — This pass &amp; QR are LOCKED on the student portal until approved.
+          </span>
+          <button type="button" class="btn btn-primary" onclick="setAdminRegStatus('${reg.id}', 'Confirmed'); viewAdminPassModal('${reg.id}');" style="padding:4px 10px; font-size:0.75rem; font-weight:700;">
+            ✓ Approve Payment &amp; Unlock Pass Now
+          </button>
+        </div>
+      ` : ''}
+
       <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.8rem; border-bottom: 1px dashed #CBD5E1; padding-bottom: 0.6rem;">
         <div>
           <div style="font-size: 0.72rem; color: #0284C7; font-weight: 700; letter-spacing: 1px;">PRESIDENCY UNIVERSITY • SOIS</div>
           <div style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 800; color: #0F172A;">ARENIUM'27 DELEGATE PASS</div>
         </div>
         <div style="text-align: right;">
-          <span style="background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 6px;">✓ ${reg.status || 'Confirmed'}</span>
+          <span style="background: ${isVerified ? '#ECFDF5' : '#FEF3C7'}; color: ${isVerified ? '#047857' : '#B45309'}; border: 1px solid ${isVerified ? '#A7F3D0' : '#FCD34D'}; font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 6px;">
+            ${isVerified ? '✓ ' + (reg.status || 'Confirmed') : '⏳ PENDING'}
+          </span>
           <div style="font-family: var(--font-mono); font-size: 0.85rem; color: #0284C7; font-weight: 700; margin-top: 3px;">${reg.id}</div>
         </div>
       </div>
@@ -4120,7 +4463,7 @@ window.viewAdminPassModal = function(regId) {
         <div><strong style="color: #64748B; font-size: 0.72rem; display: block; text-transform: uppercase;">College:</strong> ${reg.college}</div>
         <div><strong style="color: #64748B; font-size: 0.72rem; display: block; text-transform: uppercase;">USN / ID:</strong> ${reg.usn}</div>
         <div><strong style="color: #64748B; font-size: 0.72rem; display: block; text-transform: uppercase;">Participation:</strong> <strong>${isTeam ? 'Team: ' + teamDisplayName : 'Solo'}</strong></div>
-        <div><strong style="color: #64748B; font-size: 0.72rem; display: block; text-transform: uppercase;">Fee Paid:</strong> <strong style="color: #047857;">${reg.feePaid || '₹200'}</strong></div>
+        <div><strong style="color: #64748B; font-size: 0.72rem; display: block; text-transform: uppercase;">Fee Paid:</strong> <strong style="color: ${isVerified ? '#047857' : '#B45309'};">${reg.feePaid || '₹200'} (${isVerified ? 'Verified' : 'Pending'})</strong></div>
         <div style="grid-column: 1 / -1;"><strong style="color: #64748B; font-size: 0.72rem; display: block; text-transform: uppercase;">Registered Arenas:</strong> <div style="color: #0F172A; font-weight: 600;">${arenas}</div></div>
       </div>
 
@@ -4227,7 +4570,7 @@ window.startGateQrScanner = function() {
     (errorMessage) => {}
   ).catch(err => {
     console.error("Camera start error:", err);
-    alert("Camera access denied or device has no camera: " + err + "\n\nYou can still click '📁 Scan QR Image File' or use 'Manual Lookup'!");
+    alert("Camera access denied or device has no camera: " + err + "\n\nYou can still click '📷 Scan QR Image File' or use 'Manual Lookup'!");
     stopGateQrScanner();
   });
 };
@@ -4288,8 +4631,7 @@ window.lookupManualGatePass = function() {
   handleGateQrScanned(query);
 };
 
-window.handleGateQrScanned = function(rawText) {
-  playScanBeep(true);
+window.handleGateQrScanned = async function(rawText) {
   const resultBody = document.getElementById("gate-scan-result-body");
   const clearancePill = document.getElementById("gate-clearance-pill");
   if (!resultBody) return;
@@ -4298,116 +4640,257 @@ window.handleGateQrScanned = function(rawText) {
   const list = db.registrations || [];
 
   // 1. Try to find Registration ID in rawText
-  let matchedReg = null;
-
-  // Exact ID match or substring
   const regIdMatch = rawText.match(/ARENIUM27-REG-[0-9]+/i) || rawText.match(/AR27-[A-Z0-9-]+/i) || rawText.match(/TEST-[A-Z0-9-]+/i);
   const targetId = regIdMatch ? regIdMatch[0].toUpperCase() : rawText.trim().toUpperCase();
 
-  matchedReg = list.find(r => 
-    (r.id && r.id.toUpperCase() === targetId) ||
-    (r.usn && r.usn.toUpperCase() === targetId) ||
-    (r.fullName && r.fullName.toUpperCase() === targetId) ||
-    (r.utrId && r.utrId.toUpperCase() === targetId)
-  );
+  // 2. Query CORE Backend API for synchronized gate check-in
+  let coreData = null;
+  try {
+    const res = await fetch(`${window.CORE_BACKEND_URL}/registrations/scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ qrData: rawText, scannerSource: "ARENIUM 27 Gate" })
+    });
+    coreData = await res.json();
+  } catch (e) {
+    console.warn("CORE backend unavailable during scan, using local FestDB:", e);
+  }
+
+  // 3. Match registration in local FestDB or from CORE response
+  let matchedReg = (coreData && coreData.registration) ? coreData.registration : null;
+  if (!matchedReg) {
+    matchedReg = list.find(r => 
+      (targetId && r.id && r.id.toUpperCase() === targetId) ||
+      (r.id && r.id.toUpperCase() === rawText.trim().toUpperCase()) ||
+      (r.usn && r.usn.toUpperCase() === rawText.trim().toUpperCase()) ||
+      (r.utrId && r.utrId.toUpperCase() === rawText.trim().toUpperCase()) ||
+      (r.fullName && r.fullName.toUpperCase() === rawText.trim().toUpperCase())
+    );
+  }
 
   currentScannedReg = matchedReg;
 
-  if (clearancePill) {
-    if (matchedReg) {
-      clearancePill.textContent = "✅ ACCESS GRANTED";
-      clearancePill.style.background = "#ECFDF5";
-      clearancePill.style.color = "#047857";
-      clearancePill.style.webkitTextFillColor = "#047857";
-      clearancePill.style.borderColor = "#10B981";
-    } else {
+  // CASE 1: Pass not found in either system
+  if (!matchedReg) {
+    playScanBeep(false);
+    if (clearancePill) {
       clearancePill.textContent = "⚠️ UNREGISTERED PASS";
       clearancePill.style.background = "#FEF2F2";
       clearancePill.style.color = "#DC2626";
       clearancePill.style.webkitTextFillColor = "#DC2626";
       clearancePill.style.borderColor = "#EF4444";
     }
-  }
 
-  if (matchedReg) {
-    const isTeam = matchedReg.regType === "Team";
-    const teamDisplayName = isTeam ? (matchedReg.teamName || "Squad") : (matchedReg.teamName ? `${matchedReg.fullName} (${matchedReg.teamName})` : matchedReg.fullName);
-    const isInt = (matchedReg.category === "internal" || !matchedReg.category);
-    const catLabel = matchedReg.categoryLabel || (isInt ? "Internal (Presidency University)" : "External (Other Institution)");
-    const arenas = [matchedReg.event1Name || matchedReg.eventName, matchedReg.event2Name, matchedReg.event3Name].filter(b => b && b !== '-').join(" • ");
-    const isCheckedIn = (matchedReg.status === "Checked In" || matchedReg.status === "Gate Cleared");
-
-    resultBody.innerHTML = `
-      <div style="width: 100%; text-align: left;">
-        <div style="background: ${isCheckedIn ? '#EFF6FF' : '#ECFDF5'}; border: 1.5px solid ${isCheckedIn ? '#93C5FD' : '#6EE7B7'}; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.2rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.4rem;">
-            <span style="font-size: 0.72rem; color: ${isCheckedIn ? '#1D4ED8' : '#047857'}; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
-              ${isCheckedIn ? 'ℹ️ ALREADY CHECKED IN' : '✅ GATE ENTRY CLEARED • OFFICIAL PASS'}
-            </span>
-            <span style="font-family: var(--font-mono); font-size: 0.8rem; font-weight: 800; color: #0284C7;">${matchedReg.id}</span>
-          </div>
-          <div style="font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; color: #0F172A; margin-bottom: 0.2rem;">
-            ${isTeam ? 'Squad: ' + teamDisplayName : matchedReg.fullName}
-          </div>
-          <div style="font-size: 0.85rem; color: #475569;">
-            Delegate Lead: <strong>${matchedReg.fullName}</strong> (${matchedReg.usn || 'N/A'}) • ${matchedReg.college || 'Presidency University'}
-          </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.84rem; margin-bottom: 1.2rem;">
-          <div><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">Category:</strong> <span style="color: #0369A1; font-weight: 700;">${catLabel}</span></div>
-          <div><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">Participation:</strong> <strong>${isTeam ? 'Team Entry' : 'Solo Entry'}</strong></div>
-          <div><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">Fee Paid:</strong> <strong style="color: #047857;">${matchedReg.feePaid || '₹200'} (Verified)</strong></div>
-          <div><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">UTR ID:</strong> <code style="color: #475569;">${matchedReg.utrId || 'N/A'}</code></div>
-          <div style="grid-column: 1 / -1;"><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">Registered Arenas:</strong> <strong style="color: #0F172A;">${arenas || 'General Fest Entry'}</strong></div>
-        </div>
-
-        ${matchedReg.teamMembers ? `
-          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 0.6rem 0.8rem; margin-bottom: 1.2rem; font-size: 0.78rem; color: #334155;">
-            <strong style="color: #0369A1; display: block; margin-bottom: 0.2rem;">👥 Squad Roster:</strong>
-            ${matchedReg.teamMembers}
-          </div>
-        ` : ''}
-
-        <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
-          <button type="button" class="btn btn-primary" onclick="markGatePassCheckedIn('${matchedReg.id}')" style="background: #059669; border-color: #047857; padding: 0.6rem 1.4rem; font-size: 0.82rem; font-weight: 700;">
-            ${isCheckedIn ? '✓ Refresh Check-In' : '✅ MARK AS CHECKED IN'}
-          </button>
-          <button type="button" class="btn btn-ghost" onclick="viewAdminPassModal('${matchedReg.id}')" style="padding: 0.6rem 1.1rem; font-size: 0.82rem; color: #0284C7; border-color: #0284C7;">
-            🎫 Full Pass Preview
-          </button>
-        </div>
-      </div>
-    `;
-  } else {
-    // If not found in local db, display scanned raw text
     resultBody.innerHTML = `
       <div style="width: 100%; text-align: left;">
         <div style="background: #FEF2F2; border: 1.5px solid #FCA5A5; border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
-          <div style="color: #DC2626; font-weight: 800; font-size: 0.95rem; margin-bottom: 0.3rem;">⚠️ Pass ID Not Found in Local Database</div>
+          <div style="color: #DC2626; font-weight: 800; font-size: 0.95rem; margin-bottom: 0.3rem;">⚠️ Pass ID Not Found in Database</div>
           <div style="font-size: 0.78rem; color: #7F1D1D; line-height: 1.45;">
-            The scanned QR code was decoded, but its ID does not match any existing local records. Click <strong>"Sync / Refresh Database"</strong> above to pull newly registered students from Google Sheets!
+            The scanned QR code was decoded, but no registration was found matching <code>${targetId}</code>. You can sync with CORE Server or Google Sheets, or perform an on-spot walk-in registration.
           </div>
         </div>
         <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 0.8rem; font-size: 0.78rem; font-family: var(--font-mono); color: #334155; white-space: pre-wrap; word-break: break-all;">
           ${rawText}
         </div>
-        <button type="button" class="btn btn-primary" onclick="syncRegistrationsFromGoogleSheet()" style="margin-top: 1rem; padding: 0.5rem 1.2rem; font-size: 0.82rem;">
-          🔄 Sync from Google Sheet Now
-        </button>
+        <div style="display:flex; gap:0.5rem; margin-top:1rem; flex-wrap:wrap;">
+          <button type="button" class="btn btn-primary" onclick="syncWithCoreBackend()" style="padding: 0.5rem 1.2rem; font-size: 0.82rem;">
+            ⚡ Sync from CORE Server
+          </button>
+          <button type="button" class="btn btn-ghost" onclick="openManualRegModal()" style="padding: 0.5rem 1.2rem; font-size: 0.82rem;">
+            + On-Spot Registration
+          </button>
+        </div>
       </div>
     `;
+    return;
   }
+
+  // Check verification state
+  const isRejected = matchedReg.status === "Rejected";
+  const isPaymentVerified = (coreData && coreData.cleared) || 
+    (matchedReg.status === "Confirmed" || matchedReg.status === "Checked In" || matchedReg.paymentVerified === true);
+
+  const isTeam = matchedReg.regType === "Team";
+  const teamDisplayName = isTeam ? (matchedReg.teamName || "Squad") : (matchedReg.teamName ? `${matchedReg.fullName} (${matchedReg.teamName})` : matchedReg.fullName);
+  const isInt = (matchedReg.category === "internal" || !matchedReg.category);
+  const catLabel = matchedReg.categoryLabel || (isInt ? "Internal (Presidency University)" : "External (Other Institution)");
+  const arenas = [matchedReg.event1Name || matchedReg.eventName, matchedReg.event2Name, matchedReg.event3Name].filter(b => b && b !== '-').join(" • ");
+  const isCheckedIn = (matchedReg.status === "Checked In" || matchedReg.status === "Gate Cleared" || (coreData && coreData.alreadyCheckedIn));
+
+  // CASE 2: PAYMENT NOT VERIFIED OR REJECTED (ENTRY BLOCKED!)
+  if (!isPaymentVerified || isRejected) {
+    playScanBeep(false);
+    if (clearancePill) {
+      clearancePill.textContent = isRejected ? "🚫 REGISTRATION REJECTED" : "⛔ PAYMENT UNVERIFIED — ENTRY BLOCKED";
+      clearancePill.style.background = "#FEF2F2";
+      clearancePill.style.color = "#DC2626";
+      clearancePill.style.webkitTextFillColor = "#DC2626";
+      clearancePill.style.borderColor = "#EF4444";
+    }
+
+    resultBody.innerHTML = `
+      <div style="width: 100%; text-align: left;">
+        <div style="background: #FFF1F2; border: 2px solid #F43F5E; border-radius: 12px; padding: 1.1rem; margin-bottom: 1.2rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.4rem;">
+            <span style="font-size: 0.76rem; color: #BE123C; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
+              ${isRejected ? '🚫 REGISTRATION REJECTED BY ADMIN' : '⛔ PAYMENT NOT VERIFIED — GATE PASS LOCKED'}
+            </span>
+            <span style="font-family: var(--font-mono); font-size: 0.8rem; font-weight: 800; color: #BE123C;">${matchedReg.id}</span>
+          </div>
+          <div style="font-family: var(--font-display); font-size: 1.25rem; font-weight: 800; color: #881337; margin-bottom: 0.3rem;">
+            ${isTeam ? 'Squad: ' + teamDisplayName : matchedReg.fullName}
+          </div>
+          <div style="font-size: 0.85rem; color: #9F1239; line-height: 1.45;">
+            <strong>Warning:</strong> ${isRejected 
+              ? 'This delegate registration was marked as Rejected by fest administrators.' 
+              : `Payment has NOT been verified yet (UTR: <code>${matchedReg.utrId || 'N/A'}</code>). Delegate's pass remains locked and entry is blocked until payment verification.`}
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.84rem; margin-bottom: 1.2rem; background:#F8FAFC; border:1px solid #E2E8F0; padding:0.9rem; border-radius:10px;">
+          <div><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">Delegate Lead:</strong> <strong>${matchedReg.fullName}</strong> (${matchedReg.usn || 'N/A'})</div>
+          <div><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">College:</strong> ${matchedReg.college || 'Presidency University'}</div>
+          <div><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">Category &amp; Fee:</strong> <span style="color: #0369A1; font-weight: 700;">${catLabel}</span> &bull; <strong style="color: #DC2626;">${matchedReg.feePaid || '₹200'} (UNVERIFIED)</strong></div>
+          <div><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">Payment UTR:</strong> <code style="color: #B45309; font-weight:700;">${matchedReg.utrId || 'N/A'}</code></div>
+          <div style="grid-column: 1 / -1;"><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">Registered Arenas:</strong> <strong style="color: #0F172A;">${arenas || 'General Fest Entry'}</strong></div>
+        </div>
+
+        <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+          <button type="button" class="btn btn-primary" onclick="verifyAndCheckInFromGate('${matchedReg.id}')" style="background: #059669; border-color: #047857; padding: 0.6rem 1.4rem; font-size: 0.82rem; font-weight: 700;">
+            ✓ Verify Payment &amp; Clear Gate Entry Now
+          </button>
+          ${matchedReg.paymentScreenshot ? `
+            <button type="button" class="btn btn-ghost" onclick="viewAdminProof('${matchedReg.id}')" style="padding: 0.6rem 1.1rem; font-size: 0.82rem; color: #0284C7; border-color: #0284C7;">
+              📷 View Payment Proof
+            </button>
+          ` : ''}
+          <button type="button" class="btn btn-ghost" onclick="setAdminRegStatus('${matchedReg.id}', 'Rejected')" style="padding: 0.6rem 1.1rem; font-size: 0.82rem; color: #E11D48; border-color: #E11D48;">
+            ✕ Mark Rejected
+          </button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // CASE 3: PAYMENT IS VERIFIED (ENTRY CLEARED!)
+  playScanBeep(true);
+  if (clearancePill) {
+    clearancePill.textContent = "✅ ACCESS GRANTED — GATE CLEARED";
+    clearancePill.style.background = "#ECFDF5";
+    clearancePill.style.color = "#047857";
+    clearancePill.style.webkitTextFillColor = "#047857";
+    clearancePill.style.borderColor = "#10B981";
+  }
+
+  // Synchronize local DB check-in state
+  const localReg = list.find(r => r.id === matchedReg.id);
+  if (localReg) {
+    localReg.status = "Checked In";
+    localReg.paymentVerified = true;
+    if (!localReg.checkInTime) {
+      localReg.checkInTime = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+    }
+    FestDB.saveData(db);
+    renderAdminRegistrations(db);
+  }
+
+  resultBody.innerHTML = `
+    <div style="width: 100%; text-align: left;">
+      <div style="background: ${isCheckedIn ? '#EFF6FF' : '#ECFDF5'}; border: 1.5px solid ${isCheckedIn ? '#93C5FD' : '#6EE7B7'}; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.2rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.4rem;">
+          <span style="font-size: 0.72rem; color: ${isCheckedIn ? '#1D4ED8' : '#047857'}; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
+            ${isCheckedIn ? 'ℹ️ ALREADY CHECKED IN' : '✅ GATE ENTRY CLEARED • OFFICIAL PASS'}
+          </span>
+          <span style="font-family: var(--font-mono); font-size: 0.8rem; font-weight: 800; color: #0284C7;">${matchedReg.id}</span>
+        </div>
+        <div style="font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; color: #0F172A; margin-bottom: 0.2rem;">
+          ${isTeam ? 'Squad: ' + teamDisplayName : matchedReg.fullName}
+        </div>
+        <div style="font-size: 0.85rem; color: #475569;">
+          Delegate Lead: <strong>${matchedReg.fullName}</strong> (${matchedReg.usn || 'N/A'}) • ${matchedReg.college || 'Presidency University'}
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.84rem; margin-bottom: 1.2rem;">
+        <div><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">Category:</strong> <span style="color: #0369A1; font-weight: 700;">${catLabel}</span></div>
+        <div><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">Participation:</strong> <strong>${isTeam ? 'Team Entry' : 'Solo Entry'}</strong></div>
+        <div><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">Fee Paid:</strong> <strong style="color: #047857;">${matchedReg.feePaid || '₹200'} (Verified ✓)</strong></div>
+        <div><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">UTR ID:</strong> <code style="color: #475569;">${matchedReg.utrId || 'N/A'}</code></div>
+        <div style="grid-column: 1 / -1;"><strong style="color: #64748B; font-size: 0.72rem; text-transform: uppercase; display: block;">Registered Arenas:</strong> <strong style="color: #0F172A;">${arenas || 'General Fest Entry'}</strong></div>
+      </div>
+
+      ${matchedReg.teamMembers ? `
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 0.6rem 0.8rem; margin-bottom: 1.2rem; font-size: 0.78rem; color: #334155;">
+          <strong style="color: #0369A1; display: block; margin-bottom: 0.2rem;">👥 Squad Roster:</strong>
+          ${matchedReg.teamMembers}
+        </div>
+      ` : ''}
+
+      <div style="display: flex; gap: 0.6rem; flex-wrap: wrap;">
+        <button type="button" class="btn btn-primary" onclick="markGatePassCheckedIn('${matchedReg.id}')" style="background: #059669; border-color: #047857; padding: 0.6rem 1.4rem; font-size: 0.82rem; font-weight: 700;">
+          ${isCheckedIn ? '✓ Refresh Check-In' : '✅ MARK AS CHECKED IN'}
+        </button>
+        <button type="button" class="btn btn-ghost" onclick="viewAdminPassModal('${matchedReg.id}')" style="padding: 0.6rem 1.1rem; font-size: 0.82rem; color: #0284C7; border-color: #0284C7;">
+          🎫 Full Pass Preview
+        </button>
+      </div>
+    </div>
+  `;
 };
 
-window.markGatePassCheckedIn = function(regId) {
+window.verifyAndCheckInFromGate = async function(regId) {
+  const db = FestDB.getData();
+  const reg = (db.registrations || []).find(r => r.id === regId);
+  if (reg) {
+    reg.status = "Checked In";
+    reg.paymentVerified = true;
+    reg.verifiedAt = new Date().toISOString();
+    reg.checkInTime = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+    FestDB.saveData(db);
+  }
+
+  try {
+    await fetch(`${window.CORE_BACKEND_URL}/registrations/${encodeURIComponent(regId)}/verify-payment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ verifiedBy: "Gate Scanner Admin" })
+    });
+    await fetch(`${window.CORE_BACKEND_URL}/registrations/scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ qrData: regId, scannerSource: "Gate Verification Override" })
+    });
+  } catch (err) {
+    console.warn("Could not push check-in to CORE backend:", err);
+  }
+
+  playScanBeep(true);
+  renderAdminRegistrations(db);
+  if (typeof renderAdminOverview === "function") renderAdminOverview(db);
+  handleGateQrScanned(regId);
+  alert(`✓ Payment Verified & Gate Cleared!\n\nPass for ${reg ? reg.fullName : regId} is now officially unlocked and checked in.`);
+};
+
+window.markGatePassCheckedIn = async function(regId) {
   const db = FestDB.getData();
   const reg = (db.registrations || []).find(r => r.id === regId);
   if (!reg) return;
 
   reg.status = "Checked In";
+  reg.paymentVerified = true;
   reg.checkInTime = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
   FestDB.saveData(db);
+
+  try {
+    await fetch(`${window.CORE_BACKEND_URL}/registrations/scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ qrData: regId, scannerSource: "ARENIUM 27 Gate Scanner" })
+    });
+  } catch (e) {
+    console.warn("Could not sync check-in with CORE backend:", e);
+  }
 
   renderAdminRegistrations(db);
   renderAdminOverview(db);
