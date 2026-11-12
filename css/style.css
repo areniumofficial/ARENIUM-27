@@ -6997,6 +6997,26 @@ h1, h2, h3, h4, h5, h6,
   background: #090505 !important;
 }
 
+/* Portrait Photo Framing for University Leadership Cards */
+[data-leadership-grid] .team-photo-wrap,
+.leadership-grid .team-photo-wrap {
+  background: #f8fafc !important;
+  height: 240px !important;
+  max-height: 260px !important;
+}
+
+[data-leadership-grid] .team-photo-wrap::after,
+.leadership-grid .team-photo-wrap::after {
+  background: linear-gradient(180deg, transparent 78%, rgba(15, 23, 42, 0.18) 100%) !important;
+}
+
+[data-leadership-grid] .team-avatar-img,
+.leadership-grid .team-avatar-img {
+  object-fit: cover !important;
+  object-position: center 15% !important;
+  background: #f8fafc !important;
+}
+
 .team-card-lead,
 .cyber-card.team-card.team-card-lead {
   max-width: 340px !important;

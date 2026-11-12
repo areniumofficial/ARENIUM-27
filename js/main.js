@@ -138,10 +138,10 @@ const FestDB = {
         {
           id: "lead-provc",
           tag: "PATRON / PRO VC",
-          name: "Dr. Vidya Shetty",
+          name: "Dr. Sivaperumal",
           role: "Pro Vice-Chancellor · Presidency University",
           bio: "Guiding institutional growth, research initiatives, and academic excellence across Presidency University.",
-          photo: "images/leader-provc.svg"
+          photo: "images/leader-provc.jpg"
         },
         {
           id: "lead-vc",
@@ -149,31 +149,31 @@ const FestDB = {
           name: "Dr. S. J. Thiruvengadam",
           role: "Vice-Chancellor · Presidency University",
           bio: "Leading Presidency University's strategic vision, global partnerships, and innovation ecosystem.",
-          photo: "images/leader-vc.svg"
+          photo: "images/leader-vc.jpg"
         },
         {
           id: "lead-dean",
           tag: "PATRON / DEAN",
-          name: "Dr. C. Kalaiarasan",
+          name: "Dr. R. Mahalakshmi",
           role: "Dean · School of Information Science",
           bio: "Guiding the academic vision, industry alliances, and innovation ecosystem of SOIS Presidency University.",
-          photo: "images/leader-dean.svg"
+          photo: "images/leader-dean.jpg"
         },
         {
           id: "lead-hod",
-          tag: "HEAD OF DEPARTMENT",
-          name: "Dr. K. G. Mohan",
-          role: "HOD · School of Information Science",
-          bio: "Fostering competitive coding culture, student research, and national collegiate hackathons across SOIS.",
-          photo: "images/leader-hod.svg"
+          tag: "HOD - PG PROGRAMMES",
+          name: "Dr. Renukadevi",
+          role: "HOD (PG) · School of Information Science",
+          bio: "Fostering postgraduate research, competitive coding culture, and national collegiate hackathons across SOIS.",
+          photo: "images/leader-hod-pg.jpg"
         },
         {
           id: "lead-ug",
-          tag: "HEAD - UG PROGRAMMES",
+          tag: "HOD - UG PROGRAMMES",
           name: "Dr. Vetrimani Elangovan",
-          role: "Head of UG Programmes · PSIS",
+          role: "HOD (UG) · School of Information Science",
           bio: "Directing undergraduate computing specializations, student mentoring, and fest operations.",
-          photo: "images/leader-ug.svg"
+          photo: "images/leader-hod-ug.jpg"
         }
       ],
       soisFaculty: [
@@ -597,7 +597,7 @@ const FestDB = {
           name: "Grand Inaugural Ceremony & Lamp Lighting",
           category: "Inaugural",
           venue: "Main University Auditorium",
-          note: "Patron welcome address by Dean SOIS Dr. C. Kalaiarasan, Registrar, and Chief Technology Guests."
+          note: "Patron welcome address by Dean SOIS Dr. R. Mahalakshmi, Registrar, and Chief Technology Guests."
         },
         {
           id: "sch-02",
@@ -1047,7 +1047,15 @@ const FestDB = {
             }
           },
           coordinators: parsed.coordinators && parsed.coordinators.length ? parsed.coordinators : defaults.coordinators,
-          leadership: parsed.leadership && parsed.leadership.length ? parsed.leadership : defaults.leadership,
+          leadership: (() => {
+            const stored = parsed.leadership && parsed.leadership.length ? parsed.leadership : null;
+            if (!stored) return defaults.leadership;
+            const hasStalePlaceholders = stored.some(l =>
+              (l.photo && /leader-(provc|vc|dean|hod|ug)\.svg$/i.test(l.photo)) ||
+              /Dr\. Vidya Shetty|Dr\. C\. Kalaiarasan|Dr\. K\. G\. Mohan/i.test(l.name || "")
+            );
+            return hasStalePlaceholders ? defaults.leadership : stored;
+          })(),
           soisFaculty: parsed.soisFaculty && parsed.soisFaculty.length ? parsed.soisFaculty : defaults.soisFaculty,
           events: parsed.events && parsed.events.length ? parsed.events : defaults.events,
           schedule: parsed.schedule && parsed.schedule.length ? parsed.schedule : defaults.schedule,
@@ -1508,7 +1516,7 @@ function initTeamSections(db) {
         card.className = "cyber-card team-card reveal-on-scroll is-visible";
         card.innerHTML = `
           <div class="team-photo-wrap">
-            <img src="${l.photo || 'images/leader-dean.svg'}" alt="${l.name}" class="team-avatar-img" loading="lazy">
+            <img src="${l.photo || 'images/leader-dean.jpg'}" alt="${l.name}" class="team-avatar-img" loading="lazy">
           </div>
           <div class="team-card-tag">${l.tag}</div>
           <h4 class="team-name">${l.name}</h4>
@@ -2084,7 +2092,7 @@ function generateCertificateCanvasDataUrl(recipientName, eventName, award, colle
   // Signatory 1
   ctx.fillStyle = "#38bdf8";
   ctx.font = "bold 30px 'Rajdhani', cursive, sans-serif";
-  ctx.fillText("Dr. C. Kalaiarasan", canvas.width / 4, sigY);
+  ctx.fillText("Dr. R. Mahalakshmi", canvas.width / 4, sigY);
   ctx.fillStyle = "#64748b";
   ctx.font = "20px 'JetBrains Mono', monospace";
   ctx.fillText("DEAN, SOIS (PATRON)", canvas.width / 4, sigY + 35);
@@ -2092,10 +2100,10 @@ function generateCertificateCanvasDataUrl(recipientName, eventName, award, colle
   // Signatory 2
   ctx.fillStyle = "#38bdf8";
   ctx.font = "bold 30px 'Rajdhani', cursive, sans-serif";
-  ctx.fillText("Dr. K. G. Mohan", canvas.width / 2, sigY);
+  ctx.fillText("Dr. Renukadevi", canvas.width / 2, sigY);
   ctx.fillStyle = "#64748b";
   ctx.font = "20px 'JetBrains Mono', monospace";
-  ctx.fillText("HEAD OF DEPARTMENT, SOIS", canvas.width / 2, sigY + 35);
+  ctx.fillText("HEAD OF DEPARTMENT (PG), SOIS", canvas.width / 2, sigY + 35);
 
   // Signatory 3
   ctx.fillStyle = "#38bdf8";
